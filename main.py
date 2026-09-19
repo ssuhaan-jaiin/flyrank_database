@@ -1,9 +1,15 @@
 from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPBearer
 from pydantic import BaseModel
 from supabase_client import supabase
 
-app = FastAPI()
+security_scheme = HTTPBearer()
+
+app = FastAPI(
+    title="Auth API",
+    version="1.0",
+)
 print("Connected to Supabase")
 
 
@@ -80,7 +86,7 @@ def login(credentials: AuthCredentials):
 
 
 @app.post("/auth/logout", summary="Log out")
-def logout(current: dict = Depends(get_current_user)):
+def logout(current: dict = Depends(get_current_user), _=Depends(security_scheme)):
     supabase.auth.sign_out()
     return JSONResponse(status_code=204, content=None)
 
@@ -91,7 +97,7 @@ def public_info():
 
 
 @app.get("/protected/profile", summary="Get profile (verified)")
-def protected_profile(current: dict = Depends(get_current_user)):
+def protected_profile(current: dict = Depends(get_current_user), _=Depends(security_scheme)):
     user = current["user"]
     return {
         "id": user.id,
@@ -101,6 +107,6 @@ def protected_profile(current: dict = Depends(get_current_user)):
 
 
 @app.get("/protected/dashboard", summary="Dashboard (verified) — proves the guard is reusable")
-def protected_dashboard(current: dict = Depends(get_current_user)):
+def protected_dashboard(current: dict = Depends(get_current_user), _=Depends(security_scheme)):
     user = current["user"]
     return {"message": f"Welcome to your dashboard, {user.email}"}
