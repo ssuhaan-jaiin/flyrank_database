@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from supabase_client import supabase
@@ -10,6 +10,33 @@ print("Connected to Supabase")
 class AuthCredentials(BaseModel):
     email: str
     password: str
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    return JSONResponse(status_code=exc.status_code, content={"error": exc.detail})
+
+
+def get_current_user(request: Request) -> dict:
+    auth_header = request.headers.get("Authorization")
+
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Access token required")
+
+    token = auth_header.removeprefix("Bearer ").strip()
+
+    if not token:
+        raise HTTPException(status_code=401, detail="Access token required")
+
+    try:
+        result = supabase.auth.get_user(token)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    if result is None or result.user is None:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    return {"user": result.user, "token": token}
 
 
 @app.get("/", summary="API info")
@@ -52,33 +79,28 @@ def login(credentials: AuthCredentials):
     }
 
 
+@app.post("/auth/logout", summary="Log out")
+def logout(current: dict = Depends(get_current_user)):
+    supabase.auth.sign_out()
+    return JSONResponse(status_code=204, content=None)
+
+
 @app.get("/public/info", summary="Public info")
 def public_info():
     return {"message": "Welcome stranger! This info is public."}
 
 
 @app.get("/protected/profile", summary="Get profile (verified)")
-def protected_profile(request: Request):
-    auth_header = request.headers.get("Authorization")
-
-    if not auth_header or not auth_header.startswith("Bearer "):
-        return JSONResponse(status_code=401, content={"error": "Access token required"})
-
-    token = auth_header.removeprefix("Bearer ").strip()
-
-    if not token:
-        return JSONResponse(status_code=401, content={"error": "Access token required"})
-
-    try:
-        result = supabase.auth.get_user(token)
-    except Exception:
-        return JSONResponse(status_code=401, content={"error": "Invalid or expired token"})
-
-    if result is None or result.user is None:
-        return JSONResponse(status_code=401, content={"error": "Invalid or expired token"})
-
+def protected_profile(current: dict = Depends(get_current_user)):
+    user = current["user"]
     return {
-        "id": result.user.id,
-        "email": result.user.email,
-        "created_at": result.user.created_at.isoformat()
+        "id": user.id,
+        "email": user.email,
+        "created_at": user.created_at.isoformat()
     }
+
+
+@app.get("/protected/dashboard", summary="Dashboard (verified) — proves the guard is reusable")
+def protected_dashboard(current: dict = Depends(get_current_user)):
+    user = current["user"]
+    return {"message": f"Welcome to your dashboard, {user.email}"}
