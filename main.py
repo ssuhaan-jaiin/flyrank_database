@@ -2,6 +2,8 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from supabase_client import supabase
+from fastapi import Request
+
 
 app = FastAPI()
 print("Connected to Supabase")
@@ -50,3 +52,25 @@ def login(credentials: AuthCredentials):
         "access_token": result.session.access_token,
         "refresh_token": result.session.refresh_token
     }
+
+
+
+
+@app.get("/public/info", summary="Public info")
+def public_info():
+    return {"message": "Welcome stranger! This info is public."}
+
+
+@app.get("/protected/profile", summary="Protected profile (unverified)")
+def protected_profile(request: Request):
+    auth_header = request.headers.get("Authorization")
+
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return JSONResponse(status_code=401, content={"error": "Access token required"})
+
+    token = auth_header.removeprefix("Bearer ")
+
+    if not token.strip():
+        return JSONResponse(status_code=401, content={"error": "Access token required"})
+
+    return {"message": "Token was present (not yet verified)"}
