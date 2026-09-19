@@ -1,9 +1,7 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from supabase_client import supabase
-from fastapi import Request
-
 
 app = FastAPI()
 print("Connected to Supabase")
@@ -54,23 +52,33 @@ def login(credentials: AuthCredentials):
     }
 
 
-
-
 @app.get("/public/info", summary="Public info")
 def public_info():
     return {"message": "Welcome stranger! This info is public."}
 
 
-@app.get("/protected/profile", summary="Protected profile (unverified)")
+@app.get("/protected/profile", summary="Get profile (verified)")
 def protected_profile(request: Request):
     auth_header = request.headers.get("Authorization")
 
     if not auth_header or not auth_header.startswith("Bearer "):
         return JSONResponse(status_code=401, content={"error": "Access token required"})
 
-    token = auth_header.removeprefix("Bearer ")
+    token = auth_header.removeprefix("Bearer ").strip()
 
-    if not token.strip():
+    if not token:
         return JSONResponse(status_code=401, content={"error": "Access token required"})
 
-    return {"message": "Token was present (not yet verified)"}
+    try:
+        result = supabase.auth.get_user(token)
+    except Exception:
+        return JSONResponse(status_code=401, content={"error": "Invalid or expired token"})
+
+    if result is None or result.user is None:
+        return JSONResponse(status_code=401, content={"error": "Invalid or expired token"})
+
+    return {
+        "id": result.user.id,
+        "email": result.user.email,
+        "created_at": result.user.created_at.isoformat()
+    }
